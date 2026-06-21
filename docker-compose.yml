@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-assets-hub-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ai_assets_hub}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ai_assets_hub}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    container_name: ai-assets-hub-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-ai_assets_hub};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres}"
+      Authentication__Jwt__SigningKey: ${JWT_SIGNING_KEY}
+      Authentication__Jwt__Issuer: AiAssetsHub
+      Authentication__Jwt__Audience: AiAssetsHub.Frontend
+      Authentication__Jwt__ExpirationMinutes: ${JWT_EXPIRATION_MINUTES:-120}
+      CorsOrigins__0: ${CORS_ORIGIN:-http://localhost}
+      AuthFlows__FrontendBaseUrl: ${FRONTEND_BASE_URL:-http://localhost}
+      AuthFlows__ExposeActionUrlsInApi: "false"
+      AllowedEmailDomains__Domains__0: ${ALLOWED_DOMAIN_0:-lg.com}
+      AllowedEmailDomains__Domains__1: ${ALLOWED_DOMAIN_1:-lg.com.br}
+      AdminEmails__0: ${ADMIN_EMAIL_0:-marcelo.nascimento@lg.com.br}
+      EmailDelivery__Provider: ${EMAIL_PROVIDER:-AzureCommunicationServices}
+      EmailDelivery__AzureCommunicationServices__ConnectionString: ${EMAIL_ACS_CONNECTION_STRING:-}
+      EmailDelivery__AzureCommunicationServices__SenderAddress: ${EMAIL_ACS_SENDER:-}
+      EmailDelivery__AzureCommunicationServices__SenderDisplayName: "AI Assets Hub"
+      Seed__InitialContributor__Enabled: ${SEED_ENABLED:-false}
+      Seed__InitialContributor__FullName: ${SEED_FULLNAME:-}
+      Seed__InitialContributor__Email: ${SEED_EMAIL:-}
+      Seed__InitialContributor__Password: ${SEED_PASSWORD:-}
+
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost}
+    container_name: ai-assets-hub-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:alpine
+    container_name: ai-assets-hub-nginx
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  postgres_data:
