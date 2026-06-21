@@ -255,8 +255,18 @@ if (-not $nodeExe -or -not $npmExe) {
     exit 1
 }
 
+# ---- Stop running services before build ----
+Write-Host "Parando servicos existentes..." -ForegroundColor Yellow
+$ErrorActionPreference = "SilentlyContinue"
+& $nssmExe stop AiAssetsHub-Backend 2>&1 | Out-Null
+& $nssmExe stop AiAssetsHub-Frontend 2>&1 | Out-Null
+Start-Sleep -Seconds 2
+Stop-Process -Name "dotnet" -Force 2>&1 | Out-Null
+$ErrorActionPreference = "Stop"
+
 # ---- Build Backend ----
 Write-Host "Compilando backend..." -ForegroundColor Yellow
+if (Test-Path $BACKEND_DEPLOY) { Remove-Item $BACKEND_DEPLOY -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $BACKEND_DEPLOY | Out-Null
 
 & $dotnetExe publish "$BACKEND_SRC\AiAssetsHub.Api\AiAssetsHub.Api.csproj" `
@@ -300,11 +310,8 @@ Write-Host "Configurando servicos Windows..." -ForegroundColor Yellow
 $backendPort = if ($env_vars["BACKEND_PORT"]) { $env_vars["BACKEND_PORT"] } else { "8080" }
 $frontendPort = if ($env_vars["FRONTEND_PORT"]) { $env_vars["FRONTEND_PORT"] } else { "3000" }
 
-# Stop and remove existing services (ignore errors on first install)
+# Remove existing service registrations (ignore errors on first install)
 $ErrorActionPreference = "SilentlyContinue"
-& $nssmExe stop AiAssetsHub-Backend 2>&1 | Out-Null
-& $nssmExe stop AiAssetsHub-Frontend 2>&1 | Out-Null
-Start-Sleep -Seconds 2
 & $nssmExe remove AiAssetsHub-Backend confirm 2>&1 | Out-Null
 & $nssmExe remove AiAssetsHub-Frontend confirm 2>&1 | Out-Null
 $ErrorActionPreference = "Stop"

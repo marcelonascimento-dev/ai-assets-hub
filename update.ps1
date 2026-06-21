@@ -92,6 +92,7 @@ $ErrorActionPreference = "SilentlyContinue"
 & $nssmExe stop AiAssetsHub-Backend 2>&1 | Out-Null
 & $nssmExe stop AiAssetsHub-Frontend 2>&1 | Out-Null
 Start-Sleep -Seconds 2
+Stop-Process -Name "dotnet" -Force 2>&1 | Out-Null
 $ErrorActionPreference = "Stop"
 
 # ---- Rebuild Backend ----
