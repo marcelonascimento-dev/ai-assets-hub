@@ -206,9 +206,11 @@ if (-not $SkipPrereqs) {
         Write-Host "  Baixando NSSM (service manager)..." -ForegroundColor Yellow
         New-Item -ItemType Directory -Force -Path $NSSM_DIR | Out-Null
         $nssmZip = Join-Path $env:TEMP "nssm.zip"
-        Invoke-WebRequest -Uri "https://nssm.cc/release/nssm-2.24.zip" -OutFile $nssmZip
+        Invoke-WebRequest -Uri "https://github.com/nicedoc/nssm/releases/download/v2.24/nssm-2.24.zip" -OutFile $nssmZip
         Expand-Archive $nssmZip -DestinationPath $env:TEMP -Force
-        Copy-Item (Join-Path $env:TEMP "nssm-2.24\win64\nssm.exe") $NSSM_DIR
+        $nssmSrc = Get-ChildItem -Path $env:TEMP -Recurse -Filter "nssm.exe" | Where-Object { $_.DirectoryName -match "win64" } | Select-Object -First 1
+        if (-not $nssmSrc) { $nssmSrc = Get-ChildItem -Path $env:TEMP -Recurse -Filter "nssm.exe" | Select-Object -First 1 }
+        Copy-Item $nssmSrc.FullName $NSSM_DIR
         Write-Host "  NSSM instalado." -ForegroundColor Green
     } else {
         Write-Host "  NSSM OK" -ForegroundColor Green
