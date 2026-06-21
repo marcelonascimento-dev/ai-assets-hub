@@ -33,7 +33,7 @@ export default function RootLayout({
           <footer className="app-footer">
             <div className="app-shell footer-content">
               <span>© {new Date().getFullYear()} AI Assets Hub</span>
-              <span>Plataforma corporativa de assets de IA</span>
+              <span className="footer-author">Desenvolvido por Marcelo Nascimento</span>
             </div>
           </footer>
         </SessionProvider>
