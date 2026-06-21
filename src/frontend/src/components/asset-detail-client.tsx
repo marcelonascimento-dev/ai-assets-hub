@@ -8,6 +8,7 @@ import remarkGfm from "remark-gfm";
 import { useSession } from "@/components/session-provider";
 import { InstallModal } from "@/components/install-modal";
 import { getAssetById, deleteAsset } from "@/lib/api";
+import { buildPublicAppUrl } from "@/lib/public-url";
 import type { Asset } from "@/types/api";
 
 function getInitials(value?: string) {
@@ -67,7 +68,7 @@ export function AssetDetailClient({ assetId }: { assetId: string }) {
 
   async function handleCopyLink() {
     try {
-      await navigator.clipboard.writeText(window.location.href);
+      await navigator.clipboard.writeText(buildPublicAppUrl(`/assets/${assetId}`));
       setCopyState("copied");
       window.setTimeout(() => setCopyState("idle"), 2000);
     } catch {

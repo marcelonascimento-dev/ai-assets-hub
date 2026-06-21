@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { apiConfig } from "@/lib/api";
+import { buildPublicAppUrl } from "@/lib/public-url";
 
 type Shell = "powershell" | "bash";
 
@@ -13,11 +13,13 @@ type Props = {
 };
 
 function buildOneLiner(assetId: string, shell: Shell) {
-  const base = apiConfig.baseUrl;
+  const scriptPath = `/api/assets/${assetId}/install.${shell === "powershell" ? "ps1" : "sh"}`;
+  const scriptUrl = buildPublicAppUrl(scriptPath);
+
   if (shell === "powershell") {
-    return `iwr -useb ${base}/api/assets/${assetId}/install.ps1 | iex`;
+    return `iwr -useb ${scriptUrl} | iex`;
   }
-  return `curl -fsSL ${base}/api/assets/${assetId}/install.sh | bash`;
+  return `curl -fsSL ${scriptUrl} | bash`;
 }
 
 function detectDefaultShell(): Shell {

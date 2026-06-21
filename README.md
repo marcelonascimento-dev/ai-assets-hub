@@ -60,6 +60,9 @@ npm run dev
 
 Frontend escuta em `http://localhost:3000`.
 
+Para ambientes compartilhados, configure `NEXT_PUBLIC_APP_BASE_URL` com o domínio público do hub.
+Essa URL é usada ao copiar links de assets e gerar comandos de instalação; se ficar vazia, o frontend usa a origem atual do navegador.
+
 ### Migrations manuais (opcional)
 
 ```powershell
