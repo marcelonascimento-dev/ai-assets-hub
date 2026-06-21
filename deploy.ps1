@@ -5,7 +5,7 @@
 #
 # Usage:
 #   .\deploy.ps1                  # Instalacao completa
-#   .\deploy.ps1 -SkipPrereqs     # Pular instalacao de dependencias
+#   .\deploy.ps1 -SkipPrereqs     # Pular instalacao de .NET/Node
 #   .\deploy.ps1 -EnvOnly         # Apenas reconfigurar .env
 #   .\deploy.ps1 -RestartOnly     # Apenas reiniciar servicos
 # ==============================================================
@@ -25,6 +25,33 @@ $BACKEND_DEPLOY = Join-Path $DEPLOY_DIR "backend"
 $FRONTEND_DEPLOY = Join-Path $DEPLOY_DIR "frontend"
 $NSSM_DIR = Join-Path $DEPLOY_DIR "nssm"
 $ENV_FILE = Join-Path $ROOT ".env"
+
+# ---- Resolve executable paths (always runs) ----
+function Find-Dotnet {
+    $cmd = Get-Command dotnet -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $local = "$env:LOCALAPPDATA\Microsoft\dotnet\dotnet.exe"
+    if (Test-Path $local) { return $local }
+    $program = "C:\Program Files\dotnet\dotnet.exe"
+    if (Test-Path $program) { return $program }
+    return $null
+}
+
+function Find-Node {
+    $cmd = Get-Command node -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $program = "C:\Program Files\nodejs\node.exe"
+    if (Test-Path $program) { return $program }
+    return $null
+}
+
+function Find-Npm {
+    $cmd = Get-Command npm -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $program = "C:\Program Files\nodejs\npm.cmd"
+    if (Test-Path $program) { return $program }
+    return $null
+}
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
@@ -166,66 +193,72 @@ if (-not $SkipPrereqs) {
     Write-Host "Verificando pre-requisitos..." -ForegroundColor Yellow
 
     # .NET 8 SDK
+    $dotnetExe = Find-Dotnet
     $dotnetOk = $false
-    try {
-        $dotnetVersion = dotnet --version 2>$null
-        if ($dotnetVersion -match "^8\.") { $dotnetOk = $true }
-    } catch {}
+    if ($dotnetExe) {
+        try {
+            $dotnetVersion = & $dotnetExe --version 2>$null
+            if ($dotnetVersion -match "^8\.") { $dotnetOk = $true }
+        } catch {}
+    }
 
     if (-not $dotnetOk) {
         Write-Host "  Instalando .NET 8 SDK..." -ForegroundColor Yellow
-        $dotnetInstaller = Join-Path $env:TEMP "dotnet-sdk-8.exe"
         Invoke-WebRequest -Uri "https://dot.net/v1/dotnet-install.ps1" -OutFile (Join-Path $env:TEMP "dotnet-install.ps1")
         & powershell -ExecutionPolicy Bypass -File (Join-Path $env:TEMP "dotnet-install.ps1") -Channel 8.0
-        $env:PATH = "$env:LOCALAPPDATA\Microsoft\dotnet;$env:PATH"
         Write-Host "  .NET 8 instalado." -ForegroundColor Green
     } else {
         Write-Host "  .NET 8 SDK OK ($dotnetVersion)" -ForegroundColor Green
     }
 
     # Node.js
-    $nodeOk = $false
-    try {
-        $nodeVersion = node --version 2>$null
-        if ($nodeVersion) { $nodeOk = $true }
-    } catch {}
-
-    if (-not $nodeOk) {
+    $nodeExe = Find-Node
+    if (-not $nodeExe) {
         Write-Host "  Instalando Node.js 22..." -ForegroundColor Yellow
         $nodeInstaller = Join-Path $env:TEMP "node-setup.msi"
         Invoke-WebRequest -Uri "https://nodejs.org/dist/v22.16.0/node-v22.16.0-x64.msi" -OutFile $nodeInstaller
         Start-Process msiexec.exe -ArgumentList "/i `"$nodeInstaller`" /qn" -Wait -NoNewWindow
-        $env:PATH = "C:\Program Files\nodejs;$env:PATH"
         Write-Host "  Node.js instalado." -ForegroundColor Green
     } else {
+        $nodeVersion = & $nodeExe --version 2>$null
         Write-Host "  Node.js OK ($nodeVersion)" -ForegroundColor Green
-    }
-
-    # NSSM (service manager)
-    if (-not (Test-Path (Join-Path $NSSM_DIR "nssm.exe"))) {
-        Write-Host "  Baixando NSSM (service manager)..." -ForegroundColor Yellow
-        New-Item -ItemType Directory -Force -Path $NSSM_DIR | Out-Null
-        $nssmZip = Join-Path $env:TEMP "nssm.zip"
-        Invoke-WebRequest -Uri "https://github.com/nicedoc/nssm/releases/download/v2.24/nssm-2.24.zip" -OutFile $nssmZip
-        Expand-Archive $nssmZip -DestinationPath $env:TEMP -Force
-        $nssmSrc = Get-ChildItem -Path $env:TEMP -Recurse -Filter "nssm.exe" | Where-Object { $_.DirectoryName -match "win64" } | Select-Object -First 1
-        if (-not $nssmSrc) { $nssmSrc = Get-ChildItem -Path $env:TEMP -Recurse -Filter "nssm.exe" | Select-Object -First 1 }
-        Copy-Item $nssmSrc.FullName $NSSM_DIR
-        Write-Host "  NSSM instalado." -ForegroundColor Green
-    } else {
-        Write-Host "  NSSM OK" -ForegroundColor Green
     }
 
     Write-Host ""
 }
 
+# ---- Ensure NSSM exists (always, even with -SkipPrereqs) ----
 $nssmExe = Join-Path $NSSM_DIR "nssm.exe"
+if (-not (Test-Path $nssmExe)) {
+    Write-Host "Baixando NSSM (service manager)..." -ForegroundColor Yellow
+    New-Item -ItemType Directory -Force -Path $NSSM_DIR | Out-Null
+    $nssmZip = Join-Path $env:TEMP "nssm.zip"
+    Invoke-WebRequest -Uri "https://github.com/nicedoc/nssm/releases/download/v2.24/nssm-2.24.zip" -OutFile $nssmZip
+    Expand-Archive $nssmZip -DestinationPath $env:TEMP -Force
+    $nssmSrc = Get-ChildItem -Path $env:TEMP -Recurse -Filter "nssm.exe" | Where-Object { $_.DirectoryName -match "win64" } | Select-Object -First 1
+    if (-not $nssmSrc) { $nssmSrc = Get-ChildItem -Path $env:TEMP -Recurse -Filter "nssm.exe" | Select-Object -First 1 }
+    Copy-Item $nssmSrc.FullName $NSSM_DIR
+    Write-Host "  NSSM instalado." -ForegroundColor Green
+}
+
+# ---- Resolve paths for build ----
+$dotnetExe = Find-Dotnet
+if (-not $dotnetExe) {
+    Write-Host ".NET SDK nao encontrado. Execute sem -SkipPrereqs primeiro." -ForegroundColor Red
+    exit 1
+}
+$nodeExe = Find-Node
+$npmExe = Find-Npm
+if (-not $nodeExe -or -not $npmExe) {
+    Write-Host "Node.js nao encontrado. Execute sem -SkipPrereqs primeiro." -ForegroundColor Red
+    exit 1
+}
 
 # ---- Build Backend ----
 Write-Host "Compilando backend..." -ForegroundColor Yellow
 New-Item -ItemType Directory -Force -Path $BACKEND_DEPLOY | Out-Null
 
-dotnet publish "$BACKEND_SRC\AiAssetsHub.Api\AiAssetsHub.Api.csproj" `
+& $dotnetExe publish "$BACKEND_SRC\AiAssetsHub.Api\AiAssetsHub.Api.csproj" `
     -c Release `
     -o $BACKEND_DEPLOY `
     --nologo `
@@ -240,8 +273,8 @@ New-Item -ItemType Directory -Force -Path $FRONTEND_DEPLOY | Out-Null
 Push-Location $FRONTEND_SRC
 
 $env:NEXT_PUBLIC_API_BASE_URL = $env_vars["SITE_URL"]
-npm ci --ignore-scripts 2>$null
-npm run build
+& $npmExe ci --ignore-scripts 2>$null
+& $npmExe run build
 
 # Copy standalone output
 if (Test-Path ".next\standalone") {
@@ -276,9 +309,6 @@ Start-Sleep -Seconds 2
 & $nssmExe remove AiAssetsHub-Frontend confirm 2>$null
 
 # ---- Backend Service ----
-$dotnetExe = (Get-Command dotnet -ErrorAction SilentlyContinue).Source
-if (-not $dotnetExe) { $dotnetExe = "$env:LOCALAPPDATA\Microsoft\dotnet\dotnet.exe" }
-
 & $nssmExe install AiAssetsHub-Backend $dotnetExe "AiAssetsHub.Api.dll"
 & $nssmExe set AiAssetsHub-Backend AppDirectory $BACKEND_DEPLOY
 & $nssmExe set AiAssetsHub-Backend DisplayName "AI Assets Hub - Backend"
@@ -321,9 +351,6 @@ $multiEnv = $backendEnv -join "`n"
 & $nssmExe set AiAssetsHub-Backend AppEnvironmentExtra $multiEnv
 
 # ---- Frontend Service ----
-$nodeExe = (Get-Command node -ErrorAction SilentlyContinue).Source
-if (-not $nodeExe) { $nodeExe = "C:\Program Files\nodejs\node.exe" }
-
 & $nssmExe install AiAssetsHub-Frontend $nodeExe "server.js"
 & $nssmExe set AiAssetsHub-Frontend AppDirectory $FRONTEND_DEPLOY
 & $nssmExe set AiAssetsHub-Frontend DisplayName "AI Assets Hub - Frontend"
@@ -346,6 +373,15 @@ Write-Host "Iniciando servicos..." -ForegroundColor Yellow
 Start-Sleep -Seconds 3
 & $nssmExe start AiAssetsHub-Frontend
 
+# ---- Firewall rules ----
+Write-Host "Configurando firewall..." -ForegroundColor Yellow
+try {
+    New-NetFirewallRule -DisplayName "AI Assets Hub Backend" -Direction Inbound -Port $backendPort -Protocol TCP -Action Allow -ErrorAction SilentlyContinue | Out-Null
+    New-NetFirewallRule -DisplayName "AI Assets Hub Frontend" -Direction Inbound -Port $frontendPort -Protocol TCP -Action Allow -ErrorAction SilentlyContinue | Out-Null
+} catch {
+    Write-Host "  Nao foi possivel configurar firewall automaticamente." -ForegroundColor DarkGray
+}
+
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "  Deploy concluido!" -ForegroundColor Green
@@ -362,6 +398,6 @@ Write-Host "    .\deploy.ps1 -RestartOnly     # Reiniciar servicos" -ForegroundC
 Write-Host "    .\deploy.ps1 -EnvOnly         # Reconfigurar" -ForegroundColor DarkGray
 Write-Host "    .\deploy.ps1 -SkipPrereqs     # Rebuild sem reinstalar" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "  IMPORTANTE: Configure o IIS ou abra as portas no firewall" -ForegroundColor Yellow
-Write-Host "  do Azure para acessar externamente." -ForegroundColor Yellow
+Write-Host "  No Azure, abra as portas $backendPort e $frontendPort" -ForegroundColor Yellow
+Write-Host "  em Networking > Inbound port rules." -ForegroundColor Yellow
 Write-Host ""
