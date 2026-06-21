@@ -1,55 +1,71 @@
 # ==============================================================
-# AI Assets Hub - Deploy Script (PowerShell)
+# AI Assets Hub - Deploy Script (sem Docker)
 # ==============================================================
+# Roda backend (.NET 8) e frontend (Next.js) direto na VM
+#
 # Usage:
-#   .\deploy.ps1              # First install or update
-#   .\deploy.ps1 -EnvOnly     # Just regenerate .env interactively
+#   .\deploy.ps1                  # Instalacao completa
+#   .\deploy.ps1 -SkipPrereqs     # Pular instalacao de dependencias
+#   .\deploy.ps1 -EnvOnly         # Apenas reconfigurar .env
+#   .\deploy.ps1 -RestartOnly     # Apenas reiniciar servicos
 # ==============================================================
 
 param(
-    [switch]$EnvOnly
+    [switch]$SkipPrereqs,
+    [switch]$EnvOnly,
+    [switch]$RestartOnly
 )
 
 $ErrorActionPreference = "Stop"
+$ROOT = $PSScriptRoot
+$BACKEND_SRC = Join-Path $ROOT "src\backend"
+$FRONTEND_SRC = Join-Path $ROOT "src\frontend"
+$DEPLOY_DIR = "C:\ai-assets-hub-deploy"
+$BACKEND_DEPLOY = Join-Path $DEPLOY_DIR "backend"
+$FRONTEND_DEPLOY = Join-Path $DEPLOY_DIR "frontend"
+$NSSM_DIR = Join-Path $DEPLOY_DIR "nssm"
+$ENV_FILE = Join-Path $ROOT ".env"
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  AI Assets Hub - Deploy" -ForegroundColor Cyan
+Write-Host "  AI Assets Hub - Deploy (sem Docker)" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# --- Check prerequisites ---
-function Test-Command($cmd) {
-    $null -ne (Get-Command $cmd -ErrorAction SilentlyContinue)
+# ---- Restart Only ----
+if ($RestartOnly) {
+    Write-Host "Reiniciando servicos..." -ForegroundColor Yellow
+    $nssmExe = Join-Path $NSSM_DIR "nssm.exe"
+    & $nssmExe restart AiAssetsHub-Backend 2>$null
+    & $nssmExe restart AiAssetsHub-Frontend 2>$null
+    Write-Host "Servicos reiniciados." -ForegroundColor Green
+    exit 0
 }
 
-if (-not (Test-Command "docker")) {
-    Write-Host "Docker nao encontrado. Instale: https://docs.docker.com/get-docker/" -ForegroundColor Red
-    exit 1
-}
-
-if (-not (Test-Command "docker-compose") -and -not (docker compose version 2>$null)) {
-    Write-Host "Docker Compose nao encontrado." -ForegroundColor Red
-    exit 1
-}
-
-# --- .env setup ---
-$envFile = Join-Path $PSScriptRoot ".env"
-$envExample = Join-Path $PSScriptRoot ".env.example"
-
-if (-not (Test-Path $envFile) -or $EnvOnly) {
+# ---- .env setup ----
+function Setup-Env {
     Write-Host "Configurando variaveis de ambiente..." -ForegroundColor Yellow
     Write-Host ""
 
-    # Generate JWT key
     $jwtKey = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 64 | ForEach-Object { [char]$_ })
 
-    # Prompt for values
-    $domain = Read-Host "URL publica do sistema (ex: https://ai-assets.lg.com.br)"
+    $domain = Read-Host "URL publica do sistema (ex: http://10.0.0.5 ou https://ai-assets.lg.com.br)"
     $domain = $domain.TrimEnd('/')
     if (-not $domain) { $domain = "http://localhost" }
 
-    $pgPassword = Read-Host "Senha do PostgreSQL (deixe vazio para gerar)"
+    $pgHost = Read-Host "Host do PostgreSQL (padrao: localhost)"
+    if (-not $pgHost) { $pgHost = "localhost" }
+
+    $pgPort = Read-Host "Porta do PostgreSQL (padrao: 5432)"
+    if (-not $pgPort) { $pgPort = "5432" }
+
+    $pgDb = Read-Host "Nome do banco (padrao: ai_assets_hub)"
+    if (-not $pgDb) { $pgDb = "ai_assets_hub" }
+
+    $pgUser = Read-Host "Usuario PostgreSQL (padrao: postgres)"
+    if (-not $pgUser) { $pgUser = "postgres" }
+
+    $pgPassword = Read-Host "Senha PostgreSQL"
     if (-not $pgPassword) {
         $pgPassword = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | ForEach-Object { [char]$_ })
         Write-Host "  Senha gerada: $pgPassword" -ForegroundColor DarkGray
@@ -68,8 +84,8 @@ if (-not (Test-Path $envFile) -or $EnvOnly) {
         $acsSender = Read-Host "Azure Communication Services - Sender Address"
     }
 
+    $seedBlock = "SEED_ENABLED=false"
     $seedEnabled = Read-Host "Criar usuario inicial? [s/N]"
-    $seedBlock = ""
     if ($seedEnabled -eq "s" -or $seedEnabled -eq "S") {
         $seedName = Read-Host "  Nome completo"
         $seedEmail = Read-Host "  Email"
@@ -80,30 +96,28 @@ SEED_FULLNAME=$seedName
 SEED_EMAIL=$seedEmail
 SEED_PASSWORD=$seedPass
 "@
-    } else {
-        $seedBlock = "SEED_ENABLED=false"
     }
 
-    $appPort = Read-Host "Porta HTTP (padrao: 80)"
-    if (-not $appPort) { $appPort = "80" }
+    $backendPort = Read-Host "Porta do backend (padrao: 8080)"
+    if (-not $backendPort) { $backendPort = "8080" }
+
+    $frontendPort = Read-Host "Porta do frontend (padrao: 3000)"
+    if (-not $frontendPort) { $frontendPort = "3000" }
 
     $envContent = @"
 # AI Assets Hub - Generated $(Get-Date -Format 'yyyy-MM-dd HH:mm')
 
 # PostgreSQL
-POSTGRES_DB=ai_assets_hub
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=$pgPassword
+PG_CONNECTION_STRING=Host=$pgHost;Port=$pgPort;Database=$pgDb;Username=$pgUser;Password=$pgPassword
 
 # JWT
 JWT_SIGNING_KEY=$jwtKey
 JWT_EXPIRATION_MINUTES=120
 
 # URLs
-CORS_ORIGIN=$domain
-FRONTEND_BASE_URL=$domain
-NEXT_PUBLIC_API_BASE_URL=$domain
-APP_PORT=$appPort
+SITE_URL=$domain
+BACKEND_PORT=$backendPort
+FRONTEND_PORT=$frontendPort
 
 # Email domains
 ALLOWED_DOMAIN_0=lg.com
@@ -121,40 +135,231 @@ EMAIL_ACS_SENDER=$acsSender
 $seedBlock
 "@
 
-    Set-Content -Path $envFile -Value $envContent -Encoding UTF8
+    Set-Content -Path $ENV_FILE -Value $envContent -Encoding UTF8
     Write-Host ""
-    Write-Host "Arquivo .env criado com sucesso." -ForegroundColor Green
-    Write-Host ""
+    Write-Host "Arquivo .env criado." -ForegroundColor Green
+}
 
+if (-not (Test-Path $ENV_FILE) -or $EnvOnly) {
+    Setup-Env
     if ($EnvOnly) {
         Write-Host "Pronto. Execute .\deploy.ps1 para aplicar." -ForegroundColor Cyan
         exit 0
     }
 }
 
-# --- Build and deploy ---
-Write-Host "Construindo e iniciando containers..." -ForegroundColor Yellow
-Write-Host ""
+# ---- Read .env ----
+function Read-EnvFile {
+    $vars = @{}
+    Get-Content $ENV_FILE | ForEach-Object {
+        if ($_ -match "^\s*([^#][^=]+)=(.*)$") {
+            $vars[$Matches[1].Trim()] = $Matches[2].Trim()
+        }
+    }
+    return $vars
+}
 
-docker compose down
-docker compose up -d --build
+$env_vars = Read-EnvFile
+
+# ---- Prerequisites ----
+if (-not $SkipPrereqs) {
+    Write-Host "Verificando pre-requisitos..." -ForegroundColor Yellow
+
+    # .NET 8 SDK
+    $dotnetOk = $false
+    try {
+        $dotnetVersion = dotnet --version 2>$null
+        if ($dotnetVersion -match "^8\.") { $dotnetOk = $true }
+    } catch {}
+
+    if (-not $dotnetOk) {
+        Write-Host "  Instalando .NET 8 SDK..." -ForegroundColor Yellow
+        $dotnetInstaller = Join-Path $env:TEMP "dotnet-sdk-8.exe"
+        Invoke-WebRequest -Uri "https://dot.net/v1/dotnet-install.ps1" -OutFile (Join-Path $env:TEMP "dotnet-install.ps1")
+        & powershell -ExecutionPolicy Bypass -File (Join-Path $env:TEMP "dotnet-install.ps1") -Channel 8.0
+        $env:PATH = "$env:LOCALAPPDATA\Microsoft\dotnet;$env:PATH"
+        Write-Host "  .NET 8 instalado." -ForegroundColor Green
+    } else {
+        Write-Host "  .NET 8 SDK OK ($dotnetVersion)" -ForegroundColor Green
+    }
+
+    # Node.js
+    $nodeOk = $false
+    try {
+        $nodeVersion = node --version 2>$null
+        if ($nodeVersion) { $nodeOk = $true }
+    } catch {}
+
+    if (-not $nodeOk) {
+        Write-Host "  Instalando Node.js 22..." -ForegroundColor Yellow
+        $nodeInstaller = Join-Path $env:TEMP "node-setup.msi"
+        Invoke-WebRequest -Uri "https://nodejs.org/dist/v22.16.0/node-v22.16.0-x64.msi" -OutFile $nodeInstaller
+        Start-Process msiexec.exe -ArgumentList "/i `"$nodeInstaller`" /qn" -Wait -NoNewWindow
+        $env:PATH = "C:\Program Files\nodejs;$env:PATH"
+        Write-Host "  Node.js instalado." -ForegroundColor Green
+    } else {
+        Write-Host "  Node.js OK ($nodeVersion)" -ForegroundColor Green
+    }
+
+    # NSSM (service manager)
+    if (-not (Test-Path (Join-Path $NSSM_DIR "nssm.exe"))) {
+        Write-Host "  Baixando NSSM (service manager)..." -ForegroundColor Yellow
+        New-Item -ItemType Directory -Force -Path $NSSM_DIR | Out-Null
+        $nssmZip = Join-Path $env:TEMP "nssm.zip"
+        Invoke-WebRequest -Uri "https://nssm.cc/release/nssm-2.24.zip" -OutFile $nssmZip
+        Expand-Archive $nssmZip -DestinationPath $env:TEMP -Force
+        Copy-Item (Join-Path $env:TEMP "nssm-2.24\win64\nssm.exe") $NSSM_DIR
+        Write-Host "  NSSM instalado." -ForegroundColor Green
+    } else {
+        Write-Host "  NSSM OK" -ForegroundColor Green
+    }
+
+    Write-Host ""
+}
+
+$nssmExe = Join-Path $NSSM_DIR "nssm.exe"
+
+# ---- Build Backend ----
+Write-Host "Compilando backend..." -ForegroundColor Yellow
+New-Item -ItemType Directory -Force -Path $BACKEND_DEPLOY | Out-Null
+
+dotnet publish "$BACKEND_SRC\AiAssetsHub.Api\AiAssetsHub.Api.csproj" `
+    -c Release `
+    -o $BACKEND_DEPLOY `
+    --nologo `
+    -v q
+
+Write-Host "  Backend compilado em $BACKEND_DEPLOY" -ForegroundColor Green
+
+# ---- Build Frontend ----
+Write-Host "Compilando frontend..." -ForegroundColor Yellow
+New-Item -ItemType Directory -Force -Path $FRONTEND_DEPLOY | Out-Null
+
+Push-Location $FRONTEND_SRC
+
+$env:NEXT_PUBLIC_API_BASE_URL = $env_vars["SITE_URL"]
+npm ci --ignore-scripts 2>$null
+npm run build
+
+# Copy standalone output
+if (Test-Path ".next\standalone") {
+    Copy-Item -Path ".next\standalone\*" -Destination $FRONTEND_DEPLOY -Recurse -Force
+    if (Test-Path ".next\static") {
+        New-Item -ItemType Directory -Force -Path "$FRONTEND_DEPLOY\.next\static" | Out-Null
+        Copy-Item -Path ".next\static\*" -Destination "$FRONTEND_DEPLOY\.next\static" -Recurse -Force
+    }
+    if (Test-Path "public") {
+        New-Item -ItemType Directory -Force -Path "$FRONTEND_DEPLOY\public" | Out-Null
+        Copy-Item -Path "public\*" -Destination "$FRONTEND_DEPLOY\public" -Recurse -Force
+    }
+}
+
+Pop-Location
+Write-Host "  Frontend compilado em $FRONTEND_DEPLOY" -ForegroundColor Green
+
+# ---- Configure and Install Services ----
+Write-Host ""
+Write-Host "Configurando servicos Windows..." -ForegroundColor Yellow
+
+$backendPort = if ($env_vars["BACKEND_PORT"]) { $env_vars["BACKEND_PORT"] } else { "8080" }
+$frontendPort = if ($env_vars["FRONTEND_PORT"]) { $env_vars["FRONTEND_PORT"] } else { "3000" }
+
+# Stop existing services
+& $nssmExe stop AiAssetsHub-Backend 2>$null
+& $nssmExe stop AiAssetsHub-Frontend 2>$null
+Start-Sleep -Seconds 2
+
+# Remove existing services
+& $nssmExe remove AiAssetsHub-Backend confirm 2>$null
+& $nssmExe remove AiAssetsHub-Frontend confirm 2>$null
+
+# ---- Backend Service ----
+$dotnetExe = (Get-Command dotnet -ErrorAction SilentlyContinue).Source
+if (-not $dotnetExe) { $dotnetExe = "$env:LOCALAPPDATA\Microsoft\dotnet\dotnet.exe" }
+
+& $nssmExe install AiAssetsHub-Backend $dotnetExe "AiAssetsHub.Api.dll"
+& $nssmExe set AiAssetsHub-Backend AppDirectory $BACKEND_DEPLOY
+& $nssmExe set AiAssetsHub-Backend DisplayName "AI Assets Hub - Backend"
+& $nssmExe set AiAssetsHub-Backend Description "ASP.NET Core API for AI Assets Hub"
+& $nssmExe set AiAssetsHub-Backend Start SERVICE_AUTO_START
+& $nssmExe set AiAssetsHub-Backend AppStdout "$DEPLOY_DIR\backend-stdout.log"
+& $nssmExe set AiAssetsHub-Backend AppStderr "$DEPLOY_DIR\backend-stderr.log"
+& $nssmExe set AiAssetsHub-Backend AppRotateFiles 1
+& $nssmExe set AiAssetsHub-Backend AppRotateBytes 5242880
+
+# Set environment variables for the backend service
+$backendEnv = @(
+    "ASPNETCORE_ENVIRONMENT=Production",
+    "ASPNETCORE_URLS=http://+:$backendPort",
+    "ConnectionStrings__Postgres=$($env_vars['PG_CONNECTION_STRING'])",
+    "Authentication__Jwt__SigningKey=$($env_vars['JWT_SIGNING_KEY'])",
+    "Authentication__Jwt__Issuer=AiAssetsHub",
+    "Authentication__Jwt__Audience=AiAssetsHub.Frontend",
+    "Authentication__Jwt__ExpirationMinutes=$($env_vars['JWT_EXPIRATION_MINUTES'])",
+    "CorsOrigins__0=$($env_vars['SITE_URL'])",
+    "AuthFlows__FrontendBaseUrl=$($env_vars['SITE_URL'])",
+    "AuthFlows__ExposeActionUrlsInApi=false",
+    "AllowedEmailDomains__Domains__0=$($env_vars['ALLOWED_DOMAIN_0'])",
+    "AllowedEmailDomains__Domains__1=$($env_vars['ALLOWED_DOMAIN_1'])",
+    "AdminEmails__0=$($env_vars['ADMIN_EMAIL_0'])",
+    "EmailDelivery__Provider=$($env_vars['EMAIL_PROVIDER'])",
+    "EmailDelivery__AzureCommunicationServices__ConnectionString=$($env_vars['EMAIL_ACS_CONNECTION_STRING'])",
+    "EmailDelivery__AzureCommunicationServices__SenderAddress=$($env_vars['EMAIL_ACS_SENDER'])",
+    "EmailDelivery__AzureCommunicationServices__SenderDisplayName=AI Assets Hub"
+)
+
+if ($env_vars["SEED_ENABLED"] -eq "true") {
+    $backendEnv += "Seed__InitialContributor__Enabled=true"
+    $backendEnv += "Seed__InitialContributor__FullName=$($env_vars['SEED_FULLNAME'])"
+    $backendEnv += "Seed__InitialContributor__Email=$($env_vars['SEED_EMAIL'])"
+    $backendEnv += "Seed__InitialContributor__Password=$($env_vars['SEED_PASSWORD'])"
+}
+
+$multiEnv = $backendEnv -join "`n"
+& $nssmExe set AiAssetsHub-Backend AppEnvironmentExtra $multiEnv
+
+# ---- Frontend Service ----
+$nodeExe = (Get-Command node -ErrorAction SilentlyContinue).Source
+if (-not $nodeExe) { $nodeExe = "C:\Program Files\nodejs\node.exe" }
+
+& $nssmExe install AiAssetsHub-Frontend $nodeExe "server.js"
+& $nssmExe set AiAssetsHub-Frontend AppDirectory $FRONTEND_DEPLOY
+& $nssmExe set AiAssetsHub-Frontend DisplayName "AI Assets Hub - Frontend"
+& $nssmExe set AiAssetsHub-Frontend Description "Next.js frontend for AI Assets Hub"
+& $nssmExe set AiAssetsHub-Frontend Start SERVICE_AUTO_START
+& $nssmExe set AiAssetsHub-Frontend AppStdout "$DEPLOY_DIR\frontend-stdout.log"
+& $nssmExe set AiAssetsHub-Frontend AppStderr "$DEPLOY_DIR\frontend-stderr.log"
+& $nssmExe set AiAssetsHub-Frontend AppRotateFiles 1
+& $nssmExe set AiAssetsHub-Frontend AppRotateBytes 5242880
+
+$frontendEnv = @(
+    "PORT=$frontendPort",
+    "HOSTNAME=0.0.0.0"
+) -join "`n"
+& $nssmExe set AiAssetsHub-Frontend AppEnvironmentExtra $frontendEnv
+
+# ---- Start Services ----
+Write-Host "Iniciando servicos..." -ForegroundColor Yellow
+& $nssmExe start AiAssetsHub-Backend
+Start-Sleep -Seconds 3
+& $nssmExe start AiAssetsHub-Frontend
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "  Deploy concluido!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
-
-# Read .env to show URL
-$envVars = Get-Content $envFile | Where-Object { $_ -match "=" -and $_ -notmatch "^\s*#" }
-$frontendUrl = ($envVars | Where-Object { $_ -match "^FRONTEND_BASE_URL=" }) -replace "^FRONTEND_BASE_URL=", ""
-$port = ($envVars | Where-Object { $_ -match "^APP_PORT=" }) -replace "^APP_PORT=", ""
-
-Write-Host "  Acesse: $frontendUrl$(if ($port -and $port -ne '80') { ":$port" })" -ForegroundColor Cyan
+Write-Host "  Backend:  http://localhost:$backendPort" -ForegroundColor Cyan
+Write-Host "  Frontend: http://localhost:$frontendPort" -ForegroundColor Cyan
+Write-Host "  Site:     $($env_vars['SITE_URL'])" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  Logs em: $DEPLOY_DIR\*.log" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "  Comandos uteis:" -ForegroundColor DarkGray
-Write-Host "    docker compose logs -f        # Ver logs" -ForegroundColor DarkGray
-Write-Host "    docker compose restart        # Reiniciar" -ForegroundColor DarkGray
-Write-Host "    docker compose down           # Parar tudo" -ForegroundColor DarkGray
-Write-Host "    .\deploy.ps1 -EnvOnly        # Reconfigurar" -ForegroundColor DarkGray
+Write-Host "    .\deploy.ps1 -RestartOnly     # Reiniciar servicos" -ForegroundColor DarkGray
+Write-Host "    .\deploy.ps1 -EnvOnly         # Reconfigurar" -ForegroundColor DarkGray
+Write-Host "    .\deploy.ps1 -SkipPrereqs     # Rebuild sem reinstalar" -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "  IMPORTANTE: Configure o IIS ou abra as portas no firewall" -ForegroundColor Yellow
+Write-Host "  do Azure para acessar externamente." -ForegroundColor Yellow
 Write-Host ""
