@@ -230,15 +230,16 @@ if (-not $SkipPrereqs) {
 # ---- Ensure NSSM exists (always, even with -SkipPrereqs) ----
 $nssmExe = Join-Path $NSSM_DIR "nssm.exe"
 if (-not (Test-Path $nssmExe)) {
-    Write-Host "Baixando NSSM (service manager)..." -ForegroundColor Yellow
+    Write-Host "Instalando NSSM (service manager)..." -ForegroundColor Yellow
     New-Item -ItemType Directory -Force -Path $NSSM_DIR | Out-Null
-    $nssmZip = Join-Path $env:TEMP "nssm.zip"
-    Invoke-WebRequest -Uri "https://github.com/nicedoc/nssm/releases/download/v2.24/nssm-2.24.zip" -OutFile $nssmZip
-    Expand-Archive $nssmZip -DestinationPath $env:TEMP -Force
-    $nssmSrc = Get-ChildItem -Path $env:TEMP -Recurse -Filter "nssm.exe" | Where-Object { $_.DirectoryName -match "win64" } | Select-Object -First 1
-    if (-not $nssmSrc) { $nssmSrc = Get-ChildItem -Path $env:TEMP -Recurse -Filter "nssm.exe" | Select-Object -First 1 }
-    Copy-Item $nssmSrc.FullName $NSSM_DIR
-    Write-Host "  NSSM instalado." -ForegroundColor Green
+    $bundledNssm = Join-Path $ROOT "tools\nssm.exe"
+    if (Test-Path $bundledNssm) {
+        Copy-Item $bundledNssm $nssmExe
+        Write-Host "  NSSM copiado do repositorio." -ForegroundColor Green
+    } else {
+        Write-Host "  ERRO: tools\nssm.exe nao encontrado no repositorio." -ForegroundColor Red
+        exit 1
+    }
 }
 
 # ---- Resolve paths for build ----
