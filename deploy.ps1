@@ -284,7 +284,9 @@ New-Item -ItemType Directory -Force -Path $FRONTEND_DEPLOY | Out-Null
 Push-Location $FRONTEND_SRC
 
 $env:BACKEND_INTERNAL_URL = "http://localhost:$($env_vars['BACKEND_PORT'])"
+$env:NEXT_PUBLIC_APP_BASE_URL = $env_vars["SITE_URL"]
 Write-Host "  Backend proxy -> $($env:BACKEND_INTERNAL_URL)" -ForegroundColor Gray
+Write-Host "  Public URL    -> $($env:NEXT_PUBLIC_APP_BASE_URL)" -ForegroundColor Gray
 & $npmExe ci --ignore-scripts 2>$null
 & $npmExe run build
 
