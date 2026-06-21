@@ -48,7 +48,7 @@ $sourceDir = Join-Path $extractDir "ai-assets-hub-main"
 
 # ---- Preserve .env and replace source ----
 Remove-Item $APP_DIR -Recurse -Force
-Rename-Item $sourceDir $APP_DIR
+Move-Item $sourceDir $APP_DIR
 
 # Restore .env
 Copy-Item $envBackup $ENV_FILE -Force
