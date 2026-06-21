@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/backend/">
+    <Project Path="src/backend/AiAssetsHub.Api/AiAssetsHub.Api.csproj" />
+    <Project Path="src/backend/AiAssetsHub.Application/AiAssetsHub.Application.csproj" />
+    <Project Path="src/backend/AiAssetsHub.Domain/AiAssetsHub.Domain.csproj" />
+    <Project Path="src/backend/AiAssetsHub.Infrastructure/AiAssetsHub.Infrastructure.csproj" />
+  </Folder>
+</Solution>
