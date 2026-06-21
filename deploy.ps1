@@ -300,14 +300,14 @@ Write-Host "Configurando servicos Windows..." -ForegroundColor Yellow
 $backendPort = if ($env_vars["BACKEND_PORT"]) { $env_vars["BACKEND_PORT"] } else { "8080" }
 $frontendPort = if ($env_vars["FRONTEND_PORT"]) { $env_vars["FRONTEND_PORT"] } else { "3000" }
 
-# Stop existing services
-& $nssmExe stop AiAssetsHub-Backend 2>$null
-& $nssmExe stop AiAssetsHub-Frontend 2>$null
+# Stop and remove existing services (ignore errors on first install)
+$ErrorActionPreference = "SilentlyContinue"
+& $nssmExe stop AiAssetsHub-Backend 2>&1 | Out-Null
+& $nssmExe stop AiAssetsHub-Frontend 2>&1 | Out-Null
 Start-Sleep -Seconds 2
-
-# Remove existing services
-& $nssmExe remove AiAssetsHub-Backend confirm 2>$null
-& $nssmExe remove AiAssetsHub-Frontend confirm 2>$null
+& $nssmExe remove AiAssetsHub-Backend confirm 2>&1 | Out-Null
+& $nssmExe remove AiAssetsHub-Frontend confirm 2>&1 | Out-Null
+$ErrorActionPreference = "Stop"
 
 # ---- Backend Service ----
 & $nssmExe install AiAssetsHub-Backend $dotnetExe "AiAssetsHub.Api.dll"
