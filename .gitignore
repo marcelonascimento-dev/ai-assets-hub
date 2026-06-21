@@ -1,0 +1,10 @@
+bin/
+obj/
+.env
+/.env.*
+!.env.example
+*.log
+.claude/
+src/frontend/.next/
+src/frontend/node_modules/
+src/frontend/tsconfig.tsbuildinfo
