@@ -112,7 +112,12 @@ New-Item -ItemType Directory -Force -Path $FRONTEND_DEPLOY | Out-Null
 
 Push-Location (Join-Path $APP_DIR "src\frontend")
 
-$env:NEXT_PUBLIC_API_BASE_URL = $env_vars["SITE_URL"]
+$siteUrl = $env_vars["SITE_URL"].TrimEnd("/")
+$backendPort = $env_vars["BACKEND_PORT"]
+$uri = [System.Uri]$siteUrl
+$apiBase = "$($uri.Scheme)://$($uri.Host):$backendPort"
+$env:NEXT_PUBLIC_API_BASE_URL = $apiBase
+Write-Host "  API_BASE_URL = $apiBase" -ForegroundColor Gray
 & $npmExe ci --ignore-scripts 2>$null
 & $npmExe run build
 
