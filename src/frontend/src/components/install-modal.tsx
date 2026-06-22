@@ -51,15 +51,43 @@ export function InstallModal({ assetId, assetName, category, onClose }: Props) {
   }, [command]);
 
   async function copyToClipboard(text: string, silent = false) {
+    let ok = false;
     try {
       await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch {
+      // clipboard API blocked (HTTP) — fallback to execCommand
+    }
+    if (!ok) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch {
+        // ignore
+      }
+    }
+    if (ok) {
       setCopied(true);
       if (!silent) setToast("Comando copiado!");
       window.setTimeout(() => setCopied(false), 1600);
       if (!silent) window.setTimeout(() => setToast(null), 2200);
-    } catch {
-      if (!silent) setToast("Selecione manualmente e copie.");
-      window.setTimeout(() => setToast(null), 2200);
+    } else if (!silent) {
+      const codeEl = document.querySelector(".command-box code");
+      if (codeEl) {
+        const range = document.createRange();
+        range.selectNodeContents(codeEl);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
+      setToast("Texto selecionado — pressione Ctrl+C para copiar.");
+      window.setTimeout(() => setToast(null), 3500);
     }
   }
 
