@@ -40,11 +40,7 @@ export default function HomePage() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-    listAssets(undefined, token)
+    listAssets(undefined, token ?? undefined)
       .then(setAssets)
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -114,13 +110,6 @@ export default function HomePage() {
                 <span className="skeleton-line w-60" />
               </div>
             ))}
-          </div>
-        ) : !token ? (
-          <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
-            <p className="muted-text">Entre para ver os assets disponíveis.</p>
-            <div className="inline-actions" style={{ justifyContent: "center", marginTop: 16 }}>
-              <Link className="primary-button" href="/login">Entrar</Link>
-            </div>
           </div>
         ) : filtered.length === 0 ? (
           <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>

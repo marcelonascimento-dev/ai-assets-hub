@@ -14,6 +14,7 @@ namespace AiAssetsHub.Api.Controllers;
 public sealed class AssetsController(IAssetService assetService) : ControllerBase
 {
     [HttpGet]
+    [AllowAnonymous]
     [ProducesResponseType<IReadOnlyList<AssetSummaryResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery(Name = "q")] string? query, CancellationToken cancellationToken)
     {
@@ -22,6 +23,7 @@ public sealed class AssetsController(IAssetService assetService) : ControllerBas
     }
 
     [HttpGet("search")]
+    [AllowAnonymous]
     [ProducesResponseType<IReadOnlyList<AssetSummaryResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Search([FromQuery(Name = "q")] string? query, CancellationToken cancellationToken)
     {
@@ -30,6 +32,7 @@ public sealed class AssetsController(IAssetService assetService) : ControllerBas
     }
 
     [HttpGet("{id:guid}")]
+    [AllowAnonymous]
     [ProducesResponseType<AssetDetailResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)

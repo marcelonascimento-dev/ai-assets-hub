@@ -32,13 +32,6 @@ export function AssetDetailClient({ assetId }: { assetId: string }) {
 
   useEffect(() => {
     const sessionToken = token ?? undefined;
-
-    if (!sessionToken) {
-      setAsset(null);
-      setIsLoading(false);
-      return;
-    }
-
     let isActive = true;
 
     async function loadAsset() {
@@ -104,27 +97,6 @@ export function AssetDetailClient({ assetId }: { assetId: string }) {
     );
   }
 
-  if (!user || !token) {
-    return (
-      <div className="page-section">
-        <section className="empty-state">
-          <div className="empty-icon" aria-hidden>
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="11" width="18" height="11" rx="2" />
-              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-            </svg>
-          </div>
-          <h1>Autenticação necessária</h1>
-          <p>Entre para visualizar o detalhe completo de um asset.</p>
-          <div className="inline-actions">
-            <Link className="primary-button" href="/login">Entrar</Link>
-            <Link className="secondary-button" href="/register">Criar conta</Link>
-          </div>
-        </section>
-      </div>
-    );
-  }
-
   if (error) {
     return (
       <div className="page-section">
@@ -143,8 +115,8 @@ export function AssetDetailClient({ assetId }: { assetId: string }) {
     );
   }
 
-  const isOwner = asset.authorUserId === user.id;
-  const isAdmin = user.roles.includes("Admin");
+  const isOwner = user != null && asset.authorUserId === user.id;
+  const isAdmin = user != null && user.roles.includes("Admin");
   const canManage = isOwner || isAdmin;
 
   return (
