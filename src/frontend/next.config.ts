@@ -6,12 +6,17 @@ const backendUrl =
 const nextConfig: NextConfig = {
   output: "standalone",
   basePath: "/ai-hub",
-  rewrites: async () => [
-    {
-      source: "/api/:path*",
-      destination: `${backendUrl}/api/:path*`,
-    },
-  ],
+  rewrites: async () => ({
+    beforeFiles: [],
+    afterFiles: [],
+    fallback: [
+      {
+        source: "/api/:path*",
+        destination: `${backendUrl}/api/:path*`,
+        basePath: false as const,
+      },
+    ],
+  }),
 };
 
 export default nextConfig;
