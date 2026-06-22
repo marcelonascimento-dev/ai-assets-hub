@@ -5,6 +5,7 @@ const backendUrl =
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  basePath: "/ai-hub",
   rewrites: async () => [
     {
       source: "/api/:path*",

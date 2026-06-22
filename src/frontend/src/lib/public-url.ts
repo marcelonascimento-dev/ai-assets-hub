@@ -1,6 +1,8 @@
 const configuredAppBaseUrl =
   process.env.NEXT_PUBLIC_APP_BASE_URL?.trim().replace(/\/$/, "") ?? "";
 
+const basePath = "/ai-hub";
+
 export function getPublicAppBaseUrl() {
   if (configuredAppBaseUrl) {
     return configuredAppBaseUrl;
@@ -15,7 +17,7 @@ export function getPublicAppBaseUrl() {
 
 export function buildPublicAppUrl(path: string) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const baseUrl = getPublicAppBaseUrl();
+  const base = getPublicAppBaseUrl();
 
-  return baseUrl ? `${baseUrl}${normalizedPath}` : normalizedPath;
+  return base ? `${base}${basePath}${normalizedPath}` : `${basePath}${normalizedPath}`;
 }
