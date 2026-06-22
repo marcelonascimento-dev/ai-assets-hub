@@ -29,6 +29,15 @@ if (-not (Test-Path $ENV_FILE)) {
     exit 1
 }
 
+# ---- Backup database ----
+$backupScript = Join-Path $APP_DIR "tools\backup-db.ps1"
+if (Test-Path $backupScript) {
+    Write-Host "Fazendo backup do banco de dados..." -ForegroundColor Yellow
+    & powershell -ExecutionPolicy Bypass -File $backupScript
+} else {
+    Write-Host "  Script de backup nao encontrado, pulando." -ForegroundColor Gray
+}
+
 # ---- Backup .env ----
 $envBackup = Join-Path $DEPLOY_DIR ".env.bak"
 Copy-Item $ENV_FILE $envBackup -Force
